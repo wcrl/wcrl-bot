@@ -5,7 +5,9 @@ services:
     # commands and corrupt the SQLite WAL.
     deploy:
       replicas: 1
-    restart: unless-stopped
+    # Starts on host boot (once the Docker daemon is enabled) and after any
+    # crash; keeps restarting even if it was manually stopped before a reboot.
+    restart: always
     env_file: .env
     environment:
       DB_PATH: /app/data/wcrl.db

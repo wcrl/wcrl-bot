@@ -2,14 +2,17 @@
 
 Current state: fully implemented — create/join/leave/list/roster/kick/
 disband, including rollback of orphaned Discord objects on a failed create,
-a confirm/cancel gate on disband, and an officer ping in the team's own
-channel when leave/kick empties it.
+a confirm/cancel gate on disband, and an officer ping (with a one-click
+disband button) in the team's own channel when leave/kick empties it.
+join/roster/disband autocomplete the team name from existing teams.
 TODO: none open.
 Notes: teams are Discord-only, no external roster. One team per competitor
 in v1, enforced by the `team_members.discord_id` unique index. Command
 bodies that touch discord.py objects aren't unit tested — see
 `tests/test_teams.py` for what's covered (name validation/normalization, DB
-lookups).
+lookups, autocomplete). `EmptyTeamView` is a persistent view (registered in
+`setup()`); its button resolves the team from the channel it sits in, so it
+survives a bot restart.
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ from discord.ext import commands
 
 from db.connection import Database
 from services.roles import RoleService
-from utils.checks import is_officer, is_registered
+from utils.checks import is_officer, is_registered, member_is_officer
 from utils.errors import AlreadyOnTeam, InvalidTeamName, NotOnTeam, TeamNameTaken, TeamNotFound
 
 if TYPE_CHECKING:
@@ -77,6 +80,45 @@ async def team_by_name(db: Database, name: str) -> aiosqlite.Row | None:
     )
 
 
+async def team_by_channel(db: Database, channel_id: int) -> aiosqlite.Row | None:
+    """Look up a team by its private channel id."""
+    return await db.fetch_one(
+        "SELECT * FROM teams WHERE channel_id = ?", (channel_id,)
+    )
+
+
+async def disband_team(bot: "WCRLBot", guild: discord.Guild, team: aiosqlite.Row) -> None:
+    """Delete a team's Discord role, channel, and every DB row backing it."""
+    role_service = RoleService(
+        guild, bot.config.officer_role_id, bot.config.team_category_id
+    )
+    await role_service.delete_team(team["role_id"], team["channel_id"])
+    # team_members rows cascade via ON DELETE CASCADE (PRAGMA foreign_keys=ON).
+    await bot.db.execute("DELETE FROM teams WHERE team_id = ?", (team["team_id"],))
+
+
+async def team_name_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """Suggest existing team names as the invoker types a `name` argument."""
+    bot: "WCRLBot" = interaction.client  # type: ignore[assignment]
+    rows = await bot.db.fetch_all(
+        """
+        SELECT name FROM teams
+        WHERE name LIKE ? ESCAPE '\\'
+        ORDER BY name COLLATE NOCASE
+        LIMIT 25
+        """,
+        (f"%{_escape_like(current)}%",),
+    )
+    return [app_commands.Choice(name=row["name"], value=row["name"]) for row in rows]
+
+
+def _escape_like(text: str) -> str:
+    """Escape LIKE wildcards so typed `%`/`_` match literally."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class DisbandConfirmView(discord.ui.View):
     """Confirm/cancel buttons gating `/team disband` — it's not reversible."""
 
@@ -106,6 +148,47 @@ class DisbandConfirmView(discord.ui.View):
         self.confirmed = False
         self.stop()
         await interaction.response.edit_message(content="Cancelled.", view=None)
+
+
+class EmptyTeamView(discord.ui.View):
+    """One-click disband on the 'this team is empty' notice — Executives only.
+
+    Persistent (no timeout, fixed custom_id) so the button keeps working after
+    a bot restart; the team is resolved from the channel the notice sits in.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Disband team",
+        style=discord.ButtonStyle.danger,
+        custom_id="wcrl:disband_empty_team",
+    )
+    async def disband(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        bot: "WCRLBot" = interaction.client  # type: ignore[assignment]
+        if not member_is_officer(bot, interaction.user):
+            await interaction.response.send_message(
+                "Only Executives can disband a team.", ephemeral=True
+            )
+            return
+
+        team = await team_by_channel(bot.db, interaction.channel_id)
+        if team is None:
+            await interaction.response.edit_message(
+                content="This team has already been disbanded.", view=None
+            )
+            return
+
+        await interaction.response.send_message(
+            f"Disbanding **{team['name']}**…", ephemeral=True
+        )
+        await disband_team(bot, interaction.guild, team)
+        log.info(
+            "officer %s disbanded empty team %s via button", interaction.user.id, team["name"]
+        )
 
 
 class Teams(commands.GroupCog, name="team"):
@@ -138,7 +221,8 @@ class Teams(commands.GroupCog, name="team"):
 
         await channel.send(
             f"<@&{self.bot.config.officer_role_id}> **{team['name']}** has no members left. "
-            "What would you like to do with it?",
+            "Disband it with the button below, or leave it and sort it out here.",
+            view=EmptyTeamView(),
             allowed_mentions=discord.AllowedMentions(roles=True),
         )
 
@@ -200,6 +284,7 @@ class Teams(commands.GroupCog, name="team"):
 
     @app_commands.command(name="join", description="Join an existing team.")
     @app_commands.describe(name="Name of the team to join.")
+    @app_commands.autocomplete(name=team_name_autocomplete)
     @is_registered()
     async def join(self, interaction: discord.Interaction, name: str) -> None:
         if await self._team_of(interaction.user.id) is not None:
@@ -267,6 +352,7 @@ class Teams(commands.GroupCog, name="team"):
 
     @app_commands.command(name="roster", description="Show a team's members.")
     @app_commands.describe(name="Team name. Defaults to your own team.")
+    @app_commands.autocomplete(name=team_name_autocomplete)
     async def roster(self, interaction: discord.Interaction, name: str | None = None) -> None:
         if name is None:
             team = await self._team_of(interaction.user.id)
@@ -319,6 +405,7 @@ class Teams(commands.GroupCog, name="team"):
 
     @app_commands.command(name="disband", description="Delete a team entirely.")
     @app_commands.describe(name="Name of the team to disband.")
+    @app_commands.autocomplete(name=team_name_autocomplete)
     @is_officer()
     async def disband(self, interaction: discord.Interaction, name: str) -> None:
         team = await self._team_by_name(name)
@@ -337,16 +424,12 @@ class Teams(commands.GroupCog, name="team"):
         if not view.confirmed:
             return
 
-        role_service = RoleService(
-            interaction.guild, self.bot.config.officer_role_id, self.bot.config.team_category_id
-        )
-        await role_service.delete_team(team["role_id"], team["channel_id"])
-        # team_members rows cascade via ON DELETE CASCADE (PRAGMA foreign_keys=ON).
-        await self.bot.db.execute("DELETE FROM teams WHERE team_id = ?", (team["team_id"],))
+        await disband_team(self.bot, interaction.guild, team)
 
         log.info("officer %s disbanded team %s", interaction.user.id, team["name"])
         await interaction.followup.send(f"**{team['name']}** has been disbanded.", ephemeral=True)
 
 
 async def setup(bot: "WCRLBot") -> None:
+    bot.add_view(EmptyTeamView())
     await bot.add_cog(Teams(bot))

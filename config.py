@@ -1,7 +1,7 @@
 """Environment-backed configuration — env vars are the only config source.
 
-Current state: fully implemented.
 TODO: none open.
+
 Notes: `load()` fails fast so a misconfigured deploy never reaches the
 Discord gateway. `guild_id=None` means "sync commands globally" (production
 rollout only — see `.env.example`).

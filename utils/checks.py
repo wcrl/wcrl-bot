@@ -1,6 +1,7 @@
 """Permission logic — the single home for access rules.
 
-Current state: fully implemented (`is_registered`, `is_officer`).
+Current state: fully implemented (`is_registered`, `is_officer`, plus
+`member_is_officer` for non-command contexts like button callbacks).
 TODO: none open.
 Notes: cogs decorate commands with these rather than inspecting roles or
 querying `competitors` inline. Checks raise `utils.errors` types so the
@@ -41,16 +42,19 @@ def is_registered():
     return app_commands.check(predicate)
 
 
+def member_is_officer(bot: "WCRLBot", user: object) -> bool:
+    """Whether `user` is a guild member holding the Executive role."""
+    return isinstance(user, discord.Member) and any(
+        role.id == bot.config.officer_role_id for role in user.roles
+    )
+
+
 def is_officer():
     """Command check: invoker holds the Executive role."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
         bot: "WCRLBot" = interaction.client  # type: ignore[assignment]
-        member = interaction.user
-        if not isinstance(member, discord.Member):
-            # DM or uncached user — no roles to inspect.
-            raise NotOfficer()
-        if not any(role.id == bot.config.officer_role_id for role in member.roles):
+        if not member_is_officer(bot, interaction.user):
             raise NotOfficer()
         return True
 
