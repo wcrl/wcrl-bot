@@ -75,6 +75,7 @@ wcrl-bot/
 ├── services/roles.py, announcements.py, content.py
 ├── cogs/registration.py, teams.py
 ├── utils/checks.py, errors.py
+├── scripts/                # standalone ops tools, run directly (not by the bot)
 └── tests/
 ```
 
