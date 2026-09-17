@@ -4,7 +4,9 @@ TODO: none open.
 
 Notes: `load()` fails fast so a misconfigured deploy never reaches the
 Discord gateway. `guild_id=None` means "sync commands globally" (production
-rollout only — see `.env.example`).
+rollout only — see `.env.example`). `announcement_channel_id=None` means
+startup/shutdown announcements are skipped (logged instead) rather than
+failing config load — lets it stay unset on existing deploys.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ class Config:
     team_category_id: int
     db_path: str
     guild_id: int | None = None
+    announcement_channel_id: int | None = None
 
 
 def _require(name: str) -> str:
@@ -63,5 +66,6 @@ def load() -> Config:
         officer_role_id=_require_int("OFFICER_ROLE_ID"),
         team_category_id=_require_int("TEAM_CATEGORY_ID"),
         guild_id=_optional_int("GUILD_ID"),
+        announcement_channel_id=_optional_int("ANNOUNCEMENT_CHANNEL_ID"),
         db_path=os.getenv("DB_PATH", "data/wcrl.db").strip() or "data/wcrl.db",
     )

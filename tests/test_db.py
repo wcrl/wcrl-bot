@@ -108,3 +108,55 @@ class TestTeamMembers:
         await add_competitor(db, 1, "a@uwaterloo.ca")
         with pytest.raises(aiosqlite.IntegrityError):
             await db.execute("INSERT INTO team_members (team_id, discord_id) VALUES (99, 1)")
+
+
+class TestCompetitorProfiles:
+    async def test_profile_requires_an_existing_competitor(self, db):
+        with pytest.raises(aiosqlite.IntegrityError):
+            await db.execute(
+                "INSERT INTO competitor_profiles (discord_id, year, major) VALUES (99, 'Junior', 'Computer Science')"
+            )
+
+    async def test_competitor_can_have_at_most_one_profile_row(self, db):
+        await add_competitor(db, 1, "a@uwaterloo.ca")
+        await db.execute(
+            "INSERT INTO competitor_profiles (discord_id, year, major) VALUES (1, 'Junior', 'Computer Science')"
+        )
+        with pytest.raises(aiosqlite.IntegrityError):
+            await db.execute(
+                "INSERT INTO competitor_profiles (discord_id, year, major) VALUES (1, 'Senior', 'Harpur')"
+            )
+
+    async def test_deleting_competitor_cascades_to_profile(self, db):
+        await add_competitor(db, 1, "a@uwaterloo.ca")
+        await db.execute(
+            "INSERT INTO competitor_profiles (discord_id, year, major) VALUES (1, 'Junior', 'Computer Science')"
+        )
+        await db.execute("DELETE FROM competitors WHERE discord_id = 1")
+        assert await db.fetch_all("SELECT * FROM competitor_profiles") == []
+
+
+class TestBotState:
+    async def test_key_is_unique(self, db):
+        await db.execute(
+            "INSERT INTO bot_state (key, value) VALUES ('last_announced_changelog', 'v1')"
+        )
+        with pytest.raises(aiosqlite.IntegrityError):
+            await db.execute(
+                "INSERT INTO bot_state (key, value) VALUES ('last_announced_changelog', 'v2')"
+            )
+
+    async def test_value_can_be_updated_via_upsert(self, db):
+        await db.execute(
+            "INSERT INTO bot_state (key, value) VALUES ('last_announced_changelog', 'v1')"
+        )
+        await db.execute(
+            """
+            INSERT INTO bot_state (key, value) VALUES ('last_announced_changelog', 'v2')
+            ON CONFLICT (key) DO UPDATE SET value = excluded.value
+            """
+        )
+        row = await db.fetch_one(
+            "SELECT value FROM bot_state WHERE key = 'last_announced_changelog'"
+        )
+        assert row["value"] == "v2"

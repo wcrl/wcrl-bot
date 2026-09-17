@@ -4,7 +4,8 @@ Current state: fully implemented — create/join/leave/list/roster/kick/
 disband, including rollback of orphaned Discord objects on a failed create,
 a confirm/cancel gate on disband, and an officer ping (with a one-click
 disband button) in the team's own channel when leave/kick empties it.
-join/roster/disband autocomplete the team name from existing teams.
+join/roster/disband autocomplete the team name from existing teams. A new
+team's channel gets a welcome embed sourced from `content/DEFAULT_MESSAGE.md`.
 TODO: none open.
 Notes: teams are Discord-only, no external roster. One team per competitor
 in v1, enforced by the `team_members.discord_id` unique index. Command
@@ -12,7 +13,9 @@ bodies that touch discord.py objects aren't unit tested — see
 `tests/test_teams.py` for what's covered (name validation/normalization, DB
 lookups, autocomplete). `EmptyTeamView` is a persistent view (registered in
 `setup()`); its button resolves the team from the channel it sits in, so it
-survives a bot restart.
+survives a bot restart. The welcome message is skipped silently (logged
+instead) if `DEFAULT_MESSAGE.md` is missing or the bot can't post it — same
+best-effort posture as the nickname set in `cogs/registration.py`.
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from db.connection import Database
+from services.content import DEFAULT_MESSAGE_PATH, read_content_file
 from services.roles import RoleService
 from utils.checks import is_officer, is_registered, member_is_officer
 from utils.errors import AlreadyOnTeam, InvalidTeamName, NotOnTeam, TeamNameTaken, TeamNotFound
@@ -277,10 +281,29 @@ class Teams(commands.GroupCog, name="team"):
             raise
 
         await role_service.add_member(interaction.user, role)
+        # Respond first — slash commands have a tight 3-second initial-response
+        # window, and the welcome post is a non-critical extra HTTP round-trip.
         await interaction.response.send_message(
             f"Team **{display_name}** created — check out {channel.mention}.",
             ephemeral=True,
         )
+        await self._post_welcome_message(channel, display_name)
+
+    async def _post_welcome_message(self, channel: discord.TextChannel, team_name: str) -> None:
+        """Post the new team's welcome embed (content/DEFAULT_MESSAGE.md), best-effort."""
+        text = read_content_file(DEFAULT_MESSAGE_PATH)
+        if text is None:
+            return
+
+        embed = discord.Embed(
+            title=f"Welcome to {team_name}!",
+            description=text,
+            color=discord.Color.blurple(),
+        )
+        try:
+            await channel.send(embed=embed)
+        except discord.HTTPException:
+            log.warning("could not post welcome message in new team channel %s", channel.id)
 
     @app_commands.command(name="join", description="Join an existing team.")
     @app_commands.describe(name="Name of the team to join.")
@@ -348,7 +371,7 @@ class Teams(commands.GroupCog, name="team"):
             for row in rows
         ]
         embed = discord.Embed(title="WCRL Teams", description="\n".join(lines))
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="roster", description="Show a team's members.")
     @app_commands.describe(name="Team name. Defaults to your own team.")
@@ -377,7 +400,7 @@ class Teams(commands.GroupCog, name="team"):
             f"{row['full_name']} (<@{row['discord_id']}>)" for row in members
         ) or "No members."
         embed = discord.Embed(title=f"{team['name']} roster", description=description)
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="kick", description="Remove a member from their team.")
     @app_commands.describe(member="The member to remove.")

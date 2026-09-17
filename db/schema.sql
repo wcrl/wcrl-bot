@@ -36,3 +36,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_one_team
 
 CREATE INDEX IF NOT EXISTS idx_team_members_team
     ON team_members (team_id);
+
+-- Optional academic info collected by /register. A separate table (rather
+-- than columns on `competitors`) so existing rows need no backfill — a
+-- missing row here just means the competitor hasn't supplied this yet.
+CREATE TABLE IF NOT EXISTS competitor_profiles (
+    discord_id INTEGER PRIMARY KEY REFERENCES competitors (discord_id) ON DELETE CASCADE,
+    year       TEXT NOT NULL,
+    major      TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+-- Small key/value store for bot-internal bookkeeping (currently just the
+-- last changelog heading announced on startup).
+CREATE TABLE IF NOT EXISTS bot_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
