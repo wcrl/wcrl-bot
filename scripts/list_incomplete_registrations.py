@@ -6,35 +6,20 @@ existed, or skipped it) and so still needs to re-run `/register`.
 
 Current state: fully implemented.
 TODO: none open.
-Notes: opens the SQLite file in true read-only mode (`mode=ro` URI) instead
-of going through `db.connection.Database` — that class replays schema.sql
-on connect (`apply_schema()`), which this script has no reason to do and
-shouldn't risk attempting at all, let alone alongside a running bot. A
-strictly read-only connection can never write, so it's safe to run while
-the bot process has the same file open — WAL mode (already enabled by the
-bot) is exactly what makes concurrent readers like this one work. Never
+Notes: read-only connection details live in `scripts/_common.py`. Never
 prints `school_email` — same policy as the rest of the codebase.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sqlite3
+import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
-def open_readonly(db_path: str) -> sqlite3.Connection:
-    """Open the bot's SQLite file strictly read-only; safe alongside a running bot."""
-    resolved = Path(db_path).resolve()
-    if not resolved.exists():
-        raise FileNotFoundError(f"no database at {resolved}")
-
-    conn = sqlite3.connect(f"file:{resolved}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
+from scripts._common import add_db_argument, open_readonly  # noqa: E402
 
 
 def fetch_incomplete_registrations(conn: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -65,13 +50,8 @@ def format_report(rows: list[sqlite3.Row]) -> str:
 
 
 def main() -> None:
-    load_dotenv()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--db",
-        default=os.getenv("DB_PATH", "data/wcrl.db"),
-        help="Path to the bot's SQLite file (default: $DB_PATH, or data/wcrl.db).",
-    )
+    add_db_argument(parser)
     args = parser.parse_args()
 
     conn = open_readonly(args.db)

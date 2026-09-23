@@ -16,11 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.list_incomplete_registrations import (
-    fetch_incomplete_registrations,
-    format_report,
-    open_readonly,
-)
+from scripts._common import open_readonly
+from scripts.list_incomplete_registrations import fetch_incomplete_registrations, format_report
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 
