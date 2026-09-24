@@ -9,6 +9,10 @@ See CLAUDE.md > Changelog & Versioning for the full mechanics.
 
 ## Unreleased
 
+## v1.1
+### Stats
+- Officers can now run `/data` to see a snapshot of registration and team stats (how many competitors are registered, their year/major breakdown, team sizes).
+
 ## v1.0
 ### Registration
 - `/register` now also asks for your year and major (dropdowns, so answers stay consistent instead of splintering into "CS" / "Computer Science" / "Comp Sci").

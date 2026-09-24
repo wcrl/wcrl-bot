@@ -18,6 +18,7 @@ venv/
 
 # claude code related
 .claude/
+CLAUDE.md
 
 # vscode configuration files
 .vscode

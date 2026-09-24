@@ -50,6 +50,7 @@ log = logging.getLogger("wcrl")
 EXTENSIONS = (
     "cogs.registration",
     "cogs.teams",
+    "cogs.stats",
 )
 
 
