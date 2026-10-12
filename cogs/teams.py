@@ -1,35 +1,18 @@
-"""Team management: the `/team` command group.
-
-Current state: fully implemented — create/join/leave/list/roster/kick/
-disband, including rollback of orphaned Discord objects on a failed create,
-a confirm/cancel gate on disband, and an officer ping (with a one-click
-disband button) in the team's own channel when leave/kick empties it.
-join/roster/disband autocomplete the team name from existing teams. A new
-team's channel gets a welcome embed sourced from `content/DEFAULT_MESSAGE.md`.
-TODO: none open.
-Notes: teams are Discord-only, no external roster. One team per competitor
-in v1, enforced by the `team_members.discord_id` unique index. Command
-bodies that touch discord.py objects aren't unit tested — see
-`tests/test_teams.py` for what's covered (name validation/normalization, DB
-lookups, autocomplete). `EmptyTeamView` is a persistent view (registered in
-`setup()`); its button resolves the team from the channel it sits in, so it
-survives a bot restart. The welcome message is skipped silently (logged
-instead) if `DEFAULT_MESSAGE.md` is missing or the bot can't post it — same
-best-effort posture as the nickname set in `cogs/registration.py`.
-"""
+"""Team management: the `/team` command group."""
 
 from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from db.connection import Database
+from wcrl_db import Database
+from wcrl_db.teams import normalize_team_name
 from services.content import DEFAULT_MESSAGE_PATH, read_content_file
 from services.roles import RoleService
 from utils.checks import is_officer, is_registered, member_is_officer
@@ -42,11 +25,6 @@ log = logging.getLogger(__name__)
 
 NAME_MIN_LENGTH = 3
 NAME_MAX_LENGTH = 32
-
-
-def normalize_team_name(name: str) -> str:
-    """Case/whitespace-insensitive key for `teams.name_normalized`."""
-    return " ".join(name.split()).casefold()
 
 
 def slugify_team_name(name: str) -> str:
@@ -65,40 +43,29 @@ def validate_team_name(name: str) -> str:
     return cleaned
 
 
-async def team_for_member(db: Database, discord_id: int) -> aiosqlite.Row | None:
+async def team_for_member(db: Database, discord_id: int) -> dict[str, Any] | None:
     """The caller's team row, or None if they aren't on one."""
-    return await db.fetch_one(
-        """
-        SELECT teams.* FROM teams
-        JOIN team_members ON team_members.team_id = teams.team_id
-        WHERE team_members.discord_id = ?
-        """,
-        (discord_id,),
-    )
+    return await db.teams.get_for_member(discord_id)
 
 
-async def team_by_name(db: Database, name: str) -> aiosqlite.Row | None:
+async def team_by_name(db: Database, name: str) -> dict[str, Any] | None:
     """Look up a team by display name (case/whitespace-insensitive)."""
-    return await db.fetch_one(
-        "SELECT * FROM teams WHERE name_normalized = ?", (normalize_team_name(name),)
-    )
+    return await db.teams.get_by_name(name)
 
 
-async def team_by_channel(db: Database, channel_id: int) -> aiosqlite.Row | None:
+async def team_by_channel(db: Database, channel_id: int) -> dict[str, Any] | None:
     """Look up a team by its private channel id."""
-    return await db.fetch_one(
-        "SELECT * FROM teams WHERE channel_id = ?", (channel_id,)
-    )
+    return await db.teams.get_by_channel(channel_id)
 
 
-async def disband_team(bot: "WCRLBot", guild: discord.Guild, team: aiosqlite.Row) -> None:
+async def disband_team(bot: "WCRLBot", guild: discord.Guild, team: dict[str, Any]) -> None:
     """Delete a team's Discord role, channel, and every DB row backing it."""
     role_service = RoleService(
         guild, bot.config.officer_role_id, bot.config.team_category_id
     )
     await role_service.delete_team(team["role_id"], team["channel_id"])
     # team_members rows cascade via ON DELETE CASCADE (PRAGMA foreign_keys=ON).
-    await bot.db.execute("DELETE FROM teams WHERE team_id = ?", (team["team_id"],))
+    await bot.db.teams.delete(team["team_id"])
 
 
 async def team_name_autocomplete(
@@ -106,21 +73,8 @@ async def team_name_autocomplete(
 ) -> list[app_commands.Choice[str]]:
     """Suggest existing team names as the invoker types a `name` argument."""
     bot: "WCRLBot" = interaction.client  # type: ignore[assignment]
-    rows = await bot.db.fetch_all(
-        """
-        SELECT name FROM teams
-        WHERE name LIKE ? ESCAPE '\\'
-        ORDER BY name COLLATE NOCASE
-        LIMIT 25
-        """,
-        (f"%{_escape_like(current)}%",),
-    )
+    rows = await bot.db.teams.search_by_name(current)
     return [app_commands.Choice(name=row["name"], value=row["name"]) for row in rows]
-
-
-def _escape_like(text: str) -> str:
-    """Escape LIKE wildcards so typed `%`/`_` match literally."""
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class DisbandConfirmView(discord.ui.View):
@@ -201,22 +155,20 @@ class Teams(commands.GroupCog, name="team"):
     def __init__(self, bot: "WCRLBot") -> None:
         self.bot = bot
 
-    async def _team_of(self, discord_id: int) -> aiosqlite.Row | None:
+    async def _team_of(self, discord_id: int) -> dict[str, Any] | None:
         return await team_for_member(self.bot.db, discord_id)
 
-    async def _team_by_name(self, name: str) -> aiosqlite.Row | None:
+    async def _team_by_name(self, name: str) -> dict[str, Any] | None:
         return await team_by_name(self.bot.db, name)
 
-    async def _notify_if_empty(self, guild: discord.Guild, team: aiosqlite.Row) -> None:
+    async def _notify_if_empty(self, guild: discord.Guild, team: dict[str, Any]) -> None:
         """Ping the officer role in the team's own channel if it just lost its last member.
 
         The team is deliberately not auto-disbanded — this just surfaces the
         decision to Executives instead of leaving an empty team unnoticed.
         """
-        count = await self.bot.db.fetch_one(
-            "SELECT COUNT(*) AS n FROM team_members WHERE team_id = ?", (team["team_id"],)
-        )
-        if count["n"] != 0:
+        count = await self.bot.db.teams.count_members(team["team_id"])
+        if count != 0:
             return
 
         channel = guild.get_channel(team["channel_id"])
@@ -255,24 +207,10 @@ class Teams(commands.GroupCog, name="team"):
             raise
 
         try:
-            await self.bot.db.execute(
-                """
-                INSERT INTO teams (name, name_normalized, role_id, channel_id, created_by)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    display_name,
-                    normalize_team_name(display_name),
-                    role.id,
-                    channel.id,
-                    interaction.user.id,
-                ),
+            team = await self.bot.db.teams.create(
+                display_name, role.id, channel.id, interaction.user.id
             )
-            team = await self._team_by_name(display_name)
-            await self.bot.db.execute(
-                "INSERT INTO team_members (team_id, discord_id) VALUES (?, ?)",
-                (team["team_id"], interaction.user.id),
-            )
+            await self.bot.db.teams.add_member(team["team_id"], interaction.user.id)
         except aiosqlite.IntegrityError:
             await role_service.delete_team(role.id, channel.id)
             raise TeamNameTaken()
@@ -317,10 +255,7 @@ class Teams(commands.GroupCog, name="team"):
         if team is None:
             raise TeamNotFound()
 
-        await self.bot.db.execute(
-            "INSERT INTO team_members (team_id, discord_id) VALUES (?, ?)",
-            (team["team_id"], interaction.user.id),
-        )
+        await self.bot.db.teams.add_member(team["team_id"], interaction.user.id)
 
         role = interaction.guild.get_role(team["role_id"])
         if role is not None and isinstance(interaction.user, discord.Member):
@@ -337,9 +272,7 @@ class Teams(commands.GroupCog, name="team"):
         if team is None:
             raise NotOnTeam()
 
-        await self.bot.db.execute(
-            "DELETE FROM team_members WHERE discord_id = ?", (interaction.user.id,)
-        )
+        await self.bot.db.teams.remove_member(interaction.user.id)
 
         role = interaction.guild.get_role(team["role_id"])
         if role is not None and isinstance(interaction.user, discord.Member):
@@ -352,15 +285,7 @@ class Teams(commands.GroupCog, name="team"):
 
     @app_commands.command(name="list", description="List all teams.")
     async def list_teams(self, interaction: discord.Interaction) -> None:
-        rows = await self.bot.db.fetch_all(
-            """
-            SELECT teams.name, COUNT(team_members.discord_id) AS member_count
-            FROM teams
-            LEFT JOIN team_members ON team_members.team_id = teams.team_id
-            GROUP BY teams.team_id
-            ORDER BY teams.name COLLATE NOCASE
-            """
-        )
+        rows = await self.bot.db.teams.list_with_member_counts(order="name")
         if not rows:
             await interaction.response.send_message("No teams yet.", ephemeral=True)
             return
@@ -386,16 +311,7 @@ class Teams(commands.GroupCog, name="team"):
             if team is None:
                 raise TeamNotFound()
 
-        members = await self.bot.db.fetch_all(
-            """
-            SELECT competitors.discord_id, competitors.full_name
-            FROM team_members
-            JOIN competitors ON competitors.discord_id = team_members.discord_id
-            WHERE team_members.team_id = ?
-            ORDER BY team_members.joined_at
-            """,
-            (team["team_id"],),
-        )
+        members = await self.bot.db.teams.list_members(team["team_id"])
         description = "\n".join(
             f"{row['full_name']} (<@{row['discord_id']}>)" for row in members
         ) or "No members."
@@ -410,9 +326,7 @@ class Teams(commands.GroupCog, name="team"):
         if team is None:
             raise NotOnTeam()
 
-        await self.bot.db.execute(
-            "DELETE FROM team_members WHERE discord_id = ?", (member.id,)
-        )
+        await self.bot.db.teams.remove_member(member.id)
 
         role = interaction.guild.get_role(team["role_id"])
         if role is not None:

@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+RUN apt update && apt install -y git
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 

@@ -1,14 +1,4 @@
-"""Discord role and channel provisioning for teams.
-
-Current state: fully implemented.
-TODO: none open.
-Notes: this is the discord.py boundary CLAUDE.md's architecture principle
-refers to — `cogs/teams.py` holds policy, this only executes it. Future
-cogs (inventory, loans) should add their own service module the same way
-rather than reaching for discord.py directly. Channels have no color in the
-Discord API, so "team color" is the role's color instead — randomized on
-creation.
-"""
+"""Discord role and channel provisioning for teams."""
 
 from __future__ import annotations
 
@@ -29,6 +19,7 @@ class RoleService:
 
     async def create_team_role(self, team_name: str) -> discord.Role:
         """Create the team's Discord role, with a randomized color."""
+        # Channels have no color in the Discord API, so this stands in as the "team color."
         return await self.guild.create_role(
             name=team_name,
             colour=discord.Colour.random(),

@@ -1,22 +1,12 @@
-"""Error types and the single place errors become user-facing text.
-
-Current state: fully implemented.
-TODO: map the discord.py errors worth distinguishing (at minimum Forbidden
-— bot role too low to manage a team role — and CommandOnCooldown) before
-everything else falls through to the generic message.
-Notes: subclassing AppCommandError (not Exception) matters — discord.py
-re-raises those as-is, so they reach the tree error handler unwrapped
-whether raised from a check or from inside a command callback. Cogs raise a
-BotError subclass; the tree-level handler in `bot.py` calls `user_message()`
-to render it — handlers should never build their own copy for failure
-cases, add a case here instead.
-"""
+"""Error types and the single place errors become user-facing text."""
 
 from __future__ import annotations
 
 from discord import app_commands
 
 
+# Subclassing AppCommandError (not Exception) matters — discord.py re-raises
+# these as-is, unwrapped, whether raised from a check or a command callback.
 class BotError(app_commands.AppCommandError):
     """Base for expected, user-correctable failures."""
 
@@ -64,6 +54,9 @@ class InvalidTeamName(BotError):
 
 def user_message(error: BaseException) -> str:
     """Map any exception to the text shown to the invoker."""
+    # TODO: map the discord.py errors worth distinguishing (at minimum
+    # Forbidden — bot role too low to manage a team role — and
+    # CommandOnCooldown) before everything else falls through below.
     # app_commands wraps check failures; unwrap before matching.
     if isinstance(error, app_commands.CommandInvokeError):
         error = error.original

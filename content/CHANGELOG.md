@@ -9,6 +9,13 @@ See CLAUDE.md > Changelog & Versioning for the full mechanics.
 
 ## Unreleased
 
+## v1.2
+### Registration
+- `/status` now shows your registration date in a cleaner format.
+
+### Behind the Scenes
+- Improved how the bot stores its data for more reliable backups.
+
 ## v1.1
 ### Stats
 - Officers can now run `/data` to see a snapshot of registration and team stats (how many competitors are registered, their year/major breakdown, team sizes).

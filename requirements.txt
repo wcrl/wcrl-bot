@@ -2,6 +2,9 @@ discord.py>=2.4,<3
 aiosqlite>=0.20
 python-dotenv>=1.0
 
+# internal wcrl_db library
+wcrl-db @ git+https://github.com/wcrl/wcrl-db.git
+
 # dev / test
 pytest>=8.0
 pytest-asyncio>=0.24

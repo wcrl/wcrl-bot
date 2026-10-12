@@ -1,12 +1,4 @@
-"""Tests for changelog parsing and announcement content (`services/announcements.py`).
-
-Current state: fully implemented — covers changelog parsing (single/multiple
-entries, subheadings, no heading, skipping a leading `Unreleased` bucket),
-the freshness comparison, and both `Announcement` builders.
-TODO: none open.
-Notes: pure functions only, no discord.py or DB involved — `bot.py` is what
-turns an `Announcement` into a `discord.Embed`.
-"""
+"""Tests for changelog parsing and announcement content (`services/announcements.py`)."""
 
 from __future__ import annotations
 

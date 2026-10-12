@@ -1,26 +1,4 @@
-"""Entrypoint: wires config, the database, and the cogs together.
-
-Current state: fully implemented — connects the DB, loads all cogs, syncs
-slash commands, funnels every command error through utils.errors, and posts
-online/offline announcements (with a changelog blurb when there's a new
-entry) to the channel configured by ANNOUNCEMENT_CHANNEL_ID.
-TODO: none open.
-Notes: requires the "Server Members Intent" enabled in the Discord developer
-portal (role assignment needs Member objects); message_content is not
-requested since every command is a slash command. New feature domains
-register by adding their cog to EXTENSIONS. Guild-scoped sync (GUILD_ID set)
-gives near-instant propagation in dev; global sync is for production
-rollout.
-
-`docker stop` sends SIGTERM, which by default kills the process without
-running `close()` — the SIGTERM handler installed in `main()` routes that
-signal into a normal `bot.close()` so the shutdown announcement actually
-gets a chance to send. A hard crash or a killed/OOM'd container still skips
-it; only a watchdog outside this process could catch that, and there isn't
-one.
-
-Run with `python bot.py` (or via docker compose).
-"""
+"""Entrypoint: wires config, the database, and the cogs together. Run with `python bot.py`."""
 
 from __future__ import annotations
 
@@ -34,7 +12,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
-from db.connection import Database
+from wcrl_db import Database
 from services.announcements import (
     Announcement,
     parse_latest_entry,
@@ -110,10 +88,7 @@ class WCRLBot(commands.Bot):
             entry = parse_latest_entry(changelog_text)
             if entry is not None:
                 heading, body = entry
-                last_announced = await self.db.fetch_one(
-                    "SELECT value FROM bot_state WHERE key = 'last_announced_changelog'"
-                )
-                last_value = last_announced["value"] if last_announced is not None else None
+                last_value = await self.db.bot_state.get("last_announced_changelog")
                 if not should_announce(heading, last_value):
                     heading = body = None
 
@@ -121,13 +96,7 @@ class WCRLBot(commands.Bot):
         # Only mark the entry as announced once it has actually gone out — a
         # failed send (missing permission, no channel yet) must not burn it.
         if sent and heading is not None:
-            await self.db.execute(
-                """
-                INSERT INTO bot_state (key, value) VALUES ('last_announced_changelog', ?)
-                ON CONFLICT (key) DO UPDATE SET value = excluded.value
-                """,
-                (heading,),
-            )
+            await self.db.bot_state.set("last_announced_changelog", heading)
 
     async def _send_announcement(self, announcement: Announcement) -> bool:
         """Post an Announcement as an embed — looks like an official post, not a chat line."""
@@ -187,6 +156,9 @@ async def main() -> None:
         loop = asyncio.get_running_loop()
         sigterm_task: asyncio.Task | None = None
 
+        # docker stop sends SIGTERM, which by default kills the process without
+        # running close() — route it into a normal close() so the shutdown
+        # announcement gets a chance to send.
         def _on_sigterm() -> None:
             nonlocal sigterm_task
             sigterm_task = loop.create_task(bot.close())

@@ -1,6 +1,5 @@
 # config files
 .env
-.env.example
 
 # data base
 data/*.db

@@ -1,16 +1,4 @@
-"""Tests for the registration DB logic (`cogs/registration.py`).
-
-Current state: fully implemented — covers new vs. re-registration,
-conflicting/case-insensitive email claims, malformed email rejection,
-year/major upserts, and the modal's structure/pre-fill behavior.
-TODO: none open.
-Notes: the discord-free core (`upsert_competitor`, `upsert_profile`) is
-covered against a real DB — role-granting and nickname-setting live in
-discord.py objects that aren't worth mocking. `RegistrationModal` itself is
-instantiated directly (no interaction needed) to check it builds a
-well-formed Components V2 payload and pre-fills correctly; `on_submit`'s
-discord-side calls aren't covered here.
-"""
+"""Tests for the registration DB logic (`cogs/registration.py`)."""
 
 from __future__ import annotations
 

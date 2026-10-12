@@ -1,14 +1,4 @@
-"""Tests for team name rules and the DB-only team lookups (`cogs/teams.py`).
-
-Current state: fully implemented — covers the normalize/slugify/validate
-name helpers, the team_for_member/team_by_name/team_by_channel lookups, the
-team-name autocomplete, and disband_team's DB teardown (with a fake guild so
-the role/channel deletes are no-ops).
-TODO: none open.
-Notes: command bodies that touch discord.py objects (role/channel creation,
-member management, the EmptyTeamView button) aren't covered here — see
-`services/roles.py` as that boundary.
-"""
+"""Tests for team name rules and the DB-only team lookups (`cogs/teams.py`)."""
 
 from __future__ import annotations
 

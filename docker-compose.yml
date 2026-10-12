@@ -7,10 +7,15 @@ services:
       replicas: 1
     # Starts on host boot (once the Docker daemon is enabled) and after any
     # crash; keeps restarting even if it was manually stopped before a reboot.
-    restart: always
+    restart: unless-stopped
     env_file: .env
     environment:
-      DB_PATH: /app/data/wcrl.db
+      # DATA_DIR from .env picks the host-side mount source below; inside the
+      # container it's always this fixed, virtualized path instead, regardless
+      # of that host value — config.py uses DATA_DIR the same way in both
+      # places, it's just that the container's own filesystem view of it never
+      # changes.
+      DATA_DIR: /app/data
     volumes:
       # Must be persistent — holds wcrl.db plus its -wal/-shm sidecars.
-      - ./data:/app/data
+      - ${DATA_DIR:?Path to database must be set!}:/app/data

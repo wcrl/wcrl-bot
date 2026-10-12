@@ -1,13 +1,4 @@
-"""Tests for `scripts/list_incomplete_registrations.py`.
-
-Current state: fully implemented — covers the read-only open (including the
-missing-file case), the filtering query, and both report-text branches.
-TODO: none open.
-Notes: uses a real on-disk SQLite file (`tmp_path`) rather than `:memory:`,
-since `open_readonly`'s `mode=ro` URI needs an actual file to attach to —
-that's also what exercises the same code path used against the bot's real
-`data/wcrl.db`.
-"""
+"""Tests for `scripts/list_incomplete_registrations.py`."""
 
 from __future__ import annotations
 
@@ -15,11 +6,12 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+import wcrl_db
 
 from scripts._common import open_readonly
 from scripts.list_incomplete_registrations import fetch_incomplete_registrations, format_report
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "db" / "schema.sql"
+SCHEMA_PATH = Path(wcrl_db.__file__).with_name("schema.sql")
 
 
 @pytest.fixture

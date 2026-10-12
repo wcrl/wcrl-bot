@@ -1,13 +1,4 @@
-"""Environment-backed configuration — env vars are the only config source.
-
-TODO: none open.
-
-Notes: `load()` fails fast so a misconfigured deploy never reaches the
-Discord gateway. `guild_id=None` means "sync commands globally" (production
-rollout only — see `.env.example`). `announcement_channel_id=None` means
-startup/shutdown announcements are skipped (logged instead) rather than
-failing config load — lets it stay unset on existing deploys.
-"""
+"""Environment-backed configuration — env vars are the only config source."""
 
 from __future__ import annotations
 
@@ -60,6 +51,7 @@ def _optional_int(name: str) -> int | None:
 def load() -> Config:
     """Read config from the environment (and `.env` if present)."""
     load_dotenv()
+    data_dir = os.getenv("DATA_DIR", "data").strip() or "data"
     return Config(
         bot_token=_require("DISCORD_BOT_TOKEN"),
         registered_role_id=_require_int("REGISTERED_ROLE_ID"),
@@ -67,5 +59,5 @@ def load() -> Config:
         team_category_id=_require_int("TEAM_CATEGORY_ID"),
         guild_id=_optional_int("GUILD_ID"),
         announcement_channel_id=_optional_int("ANNOUNCEMENT_CHANNEL_ID"),
-        db_path=os.getenv("DB_PATH", "data/wcrl.db").strip() or "data/wcrl.db",
+        db_path=os.path.join(data_dir, "wcrl.db"),
     )

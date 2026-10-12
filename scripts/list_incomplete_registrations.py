@@ -1,14 +1,4 @@
-"""Ops helper: lists competitors who still need to fill in year/major.
-
-Purpose: a quick report for officers — who has a `competitors` row but no
-matching `competitor_profiles` row (i.e. registered before year/major
-existed, or skipped it) and so still needs to re-run `/register`.
-
-Current state: fully implemented.
-TODO: none open.
-Notes: read-only connection details live in `scripts/_common.py`. Never
-prints `school_email` — same policy as the rest of the codebase.
-"""
+"""Ops helper: lists competitors who still need to fill in year/major."""
 
 from __future__ import annotations
 

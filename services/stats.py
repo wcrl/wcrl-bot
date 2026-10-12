@@ -6,55 +6,34 @@ officers can pull them from Discord.
 
 Current state: fully implemented.
 TODO: none open.
-Notes: the SQL here deliberately mirrors `scripts/db_stats.py::collect_stats`
+Notes: mirrors the same figures as `scripts/db_stats.py::collect_stats`
 rather than sharing code with it — that script intentionally never touches
 `db.connection.Database` (its whole point is a connection that provably
 cannot write, even accidentally, via `apply_schema()`'s replay), while this
 module exists specifically to run inside the bot's event loop against its
-one shared `aiosqlite` connection. Keep the two in sync by hand if the
-shape of the stats changes. `discord-free` — `cogs/stats.py` is what turns
-this dict into an embed.
+one shared `aiosqlite` connection. Both now build their numbers from
+`CompetitorRepository`/`TeamRepository` and plain SQL respectively — keep
+them in sync by hand if the shape of the stats changes. `discord-free` —
+`cogs/stats.py` is what turns this dict into an embed.
 """
 
 from __future__ import annotations
 
-from db.connection import Database
+from wcrl_db import Database
 
 
 async def collect_stats(db: Database) -> dict:
     """Gather registration and team stats into one plain dict."""
-    total_competitors = (await db.fetch_one("SELECT COUNT(*) AS n FROM competitors"))["n"]
-    with_profile = (await db.fetch_one("SELECT COUNT(*) AS n FROM competitor_profiles"))["n"]
+    total_competitors = await db.competitors.count()
+    with_profile = await db.competitors.count_with_profile()
+    year_counts = await db.competitors.count_by_year()
+    major_counts = await db.competitors.count_by_major()
 
-    year_counts = [
-        (row["year"], row["n"])
-        for row in await db.fetch_all(
-            "SELECT year, COUNT(*) AS n FROM competitor_profiles GROUP BY year ORDER BY n DESC, year"
-        )
-    ]
-    major_counts = [
-        (row["major"], row["n"])
-        for row in await db.fetch_all(
-            "SELECT major, COUNT(*) AS n FROM competitor_profiles GROUP BY major ORDER BY n DESC, major"
-        )
-    ]
-
-    total_teams = (await db.fetch_one("SELECT COUNT(*) AS n FROM teams"))["n"]
-    competitors_on_a_team = (
-        await db.fetch_one("SELECT COUNT(DISTINCT discord_id) AS n FROM team_members")
-    )["n"]
-
+    total_teams = await db.teams.count()
+    competitors_on_a_team = await db.teams.count_distinct_members()
     teams = [
         (row["name"], row["member_count"])
-        for row in await db.fetch_all(
-            """
-            SELECT teams.name, COUNT(team_members.discord_id) AS member_count
-            FROM teams
-            LEFT JOIN team_members ON team_members.team_id = teams.team_id
-            GROUP BY teams.team_id
-            ORDER BY member_count DESC, teams.name COLLATE NOCASE
-            """
-        )
+        for row in await db.teams.list_with_member_counts(order="size")
     ]
 
     return {

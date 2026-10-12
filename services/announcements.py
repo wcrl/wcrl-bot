@@ -1,31 +1,4 @@
-"""Startup/shutdown announcement content and changelog-freshness detection.
-
-Purpose: everything the bot needs to decide *what* to post to the
-announcement channel on connect/disconnect — kept discord-free so it's
-testable without a running bot, per CLAUDE.md's `services/` convention.
-Returns plain data (`Announcement`); `bot.py` turns that into a
-`discord.Embed` so the message reads as an official post rather than a
-plain chat line.
-
-Current state: fully implemented — changelog parsing, the WIP-vs-release
-distinction, the "is this entry new" comparison, and the two `Announcement`
-builders.
-TODO: none open.
-Notes: CHANGELOG.md follows Keep a Changelog style: a `## Unreleased`
-heading sits at the very top and accumulates changes across as many
-deploys as it takes, so it's *not* what should be announced — a bump keeps
-it on top (fresh and empty) and inserts the newly-named `## vX.Y` section
-right below it. `parse_latest_entry` therefore skips a leading `Unreleased`
-heading and returns the first *versioned* `##` section instead (still just
-one section — everything from the next `##` heading, or EOF, onward is
-ignored; `###` subheadings are included in the body). `is_release()` is a
-plain predicate over a heading string, exported mainly so callers/tests
-don't have to hardcode the sentinel. Freshness (`should_announce`) is
-compared on heading text alone, not a hash of the body, so that
-announcement fires once, on the deploy right after a bump. `color` is a
-plain int (0xRRGGBB), not a `discord.Color`, to keep this module
-import-free of discord.py.
-"""
+"""Startup/shutdown announcement content and changelog-freshness detection."""
 
 from __future__ import annotations
 
@@ -46,7 +19,7 @@ class Announcement:
 
     title: str
     description: str | None
-    color: int
+    color: int  # plain 0xRRGGBB int, not discord.Color, to keep this module discord.py-free
 
 
 def is_release(heading: str) -> bool:
@@ -55,14 +28,11 @@ def is_release(heading: str) -> bool:
 
 
 def parse_latest_entry(changelog_text: str) -> tuple[str, str] | None:
-    """Return (heading, body) for CHANGELOG.md's first *released* `##` section, or None.
-
-    Skips a leading `## Unreleased` heading — that bucket sits on top by
-    convention and is never itself announceable.
-    """
+    """Return (heading, body) for CHANGELOG.md's first *released* `##` section, or None."""
     matches = list(_HEADING_RE.finditer(changelog_text))
     for index, match in enumerate(matches):
         heading = match.group(1).strip()
+        # `## Unreleased` sits on top by convention and is never itself announceable.
         if not is_release(heading):
             continue
 
@@ -75,6 +45,8 @@ def parse_latest_entry(changelog_text: str) -> tuple[str, str] | None:
 
 def should_announce(heading: str, last_announced: str | None) -> bool:
     """Whether a changelog entry hasn't already been posted on startup."""
+    # Compared on heading text alone, not a hash of the body, so this fires
+    # exactly once — on the deploy right after a version bump.
     return heading != last_announced
 
 

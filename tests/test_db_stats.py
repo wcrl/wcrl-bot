@@ -1,12 +1,4 @@
-"""Tests for `scripts/db_stats.py`.
-
-Current state: fully implemented — covers an empty database, a populated
-one (registration + team breakdowns), and the report text.
-TODO: none open.
-Notes: uses a real on-disk SQLite file (`tmp_path`), same reasoning as
-`tests/test_scripts.py` — `open_readonly`'s `mode=ro` URI needs an actual
-file to attach to.
-"""
+"""Tests for `scripts/db_stats.py`."""
 
 from __future__ import annotations
 
@@ -14,11 +6,12 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+import wcrl_db
 
 from scripts._common import open_readonly
 from scripts.db_stats import collect_stats, format_report
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "db" / "schema.sql"
+SCHEMA_PATH = Path(wcrl_db.__file__).with_name("schema.sql")
 
 
 def make_db(tmp_path, name: str = "wcrl.db") -> Path:

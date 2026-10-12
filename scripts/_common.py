@@ -1,18 +1,4 @@
-"""Shared read-only DB helpers for scripts/ tools.
-
-Purpose: the bit every ops script needs — a strictly read-only connection
-to the bot's live SQLite file, plus the shared `--db` CLI flag.
-
-Current state: fully implemented.
-TODO: none open.
-Notes: intentionally not `db.connection.Database` — that class replays
-schema.sql on connect (`apply_schema()`), which a read-only report script
-has no reason to do and shouldn't risk attempting at all, let alone
-alongside a running bot. `mode=ro` at the SQLite level physically cannot
-write, so it's safe to run concurrently with the bot regardless of what
-else is happening to the file — WAL mode (already enabled by the bot) is
-what makes concurrent readers like this actually work.
-"""
+"""Shared read-only DB helpers for scripts/ tools."""
 
 from __future__ import annotations
 
@@ -26,6 +12,11 @@ from dotenv import load_dotenv
 
 def open_readonly(db_path: str) -> sqlite3.Connection:
     """Open the bot's SQLite file strictly read-only; safe alongside a running bot."""
+    # Deliberately plain sqlite3, not wcrl_db.Database — that class replays
+    # schema.sql on connect, which a read-only report script must never risk,
+    # especially alongside a running bot. mode=ro physically cannot write,
+    # so this is safe to run concurrently regardless (WAL is what makes
+    # concurrent readers like this actually work).
     resolved = Path(db_path).resolve()
     if not resolved.exists():
         raise FileNotFoundError(f"no database at {resolved}")
@@ -36,10 +27,11 @@ def open_readonly(db_path: str) -> sqlite3.Connection:
 
 
 def add_db_argument(parser: argparse.ArgumentParser) -> None:
-    """Add the shared `--db` flag, defaulting to $DB_PATH (from .env) or data/wcrl.db."""
+    """Add the shared `--db` flag, defaulting to $DATA_DIR/wcrl.db (from .env) or data/wcrl.db."""
     load_dotenv()
+    data_dir = os.getenv("DATA_DIR", "data").strip() or "data"
     parser.add_argument(
         "--db",
-        default=os.getenv("DB_PATH", "data/wcrl.db"),
-        help="Path to the bot's SQLite file (default: $DB_PATH, or data/wcrl.db).",
+        default=os.path.join(data_dir, "wcrl.db"),
+        help="Path to the bot's SQLite file (default: $DATA_DIR/wcrl.db, or data/wcrl.db).",
     )

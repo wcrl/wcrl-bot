@@ -1,10 +1,4 @@
-"""Tests for the content-file reader (`services/content.py`).
-
-Current state: fully implemented.
-TODO: none open.
-Notes: uses pytest's `tmp_path` rather than the real `content/` files so
-tests don't depend on their current wording.
-"""
+"""Tests for the content-file reader (`services/content.py`)."""
 
 from __future__ import annotations
 

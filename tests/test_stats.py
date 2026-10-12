@@ -1,15 +1,4 @@
-"""Tests for `services/stats.py` and the `/data` embed (`cogs/stats.py`).
-
-Current state: fully implemented — covers an empty database, a populated
-one (registration + team breakdowns, derived arithmetic), and the embed's
-field structure including the team-breakdown truncation.
-TODO: none open.
-Notes: `collect_stats` is tested against the real `db` fixture (aiosqlite,
-schema applied), same as `cogs/registration.py`'s and `cogs/teams.py`'s
-DB-touching helpers. `build_stats_embed` is a pure function over a plain
-dict, so it's tested directly without a live bot or interaction, same
-approach as `RegistrationModal` in `tests/test_registration.py`.
-"""
+"""Tests for `services/stats.py` and the `/data` embed (`cogs/stats.py`)."""
 
 from __future__ import annotations
 

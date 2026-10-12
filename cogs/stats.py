@@ -1,18 +1,4 @@
-"""Officer-facing `/data` command: a live snapshot of registration and team stats.
-
-Current state: fully implemented.
-TODO: none open.
-Notes: intentionally **not** ephemeral — running `/data` is visible to the
-whole channel, unlike `/status`/`/team list`/`/team roster`; a non-officer
-running it still gets a private refusal (`NotOfficer` renders ephemerally
-via `bot.py`'s tree-level error handler, unaffected by this command's own
-reply not being ephemeral). "Team Breakdown" is capped at
-`TEAM_BREAKDOWN_LIMIT` teams with a "…and N more" tail — an embed field
-caps out at 1024 characters, and a growing club could plausibly cross that
-line within a season; the other sections (Registration, By Year, By Major)
-are bounded by construction (one line, or one per dropdown option) and
-don't need the same guard.
-"""
+"""Officer-facing `/data` command: a live snapshot of registration and team stats."""
 
 from __future__ import annotations
 
@@ -28,6 +14,8 @@ from utils.checks import is_officer
 if TYPE_CHECKING:
     from bot import WCRLBot
 
+# An embed field caps at 1024 characters; the other sections are bounded by
+# construction and don't need a limit like this.
 TEAM_BREAKDOWN_LIMIT = 15
 
 

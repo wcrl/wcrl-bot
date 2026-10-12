@@ -1,12 +1,4 @@
-"""Permission logic — the single home for access rules.
-
-Current state: fully implemented (`is_registered`, `is_officer`, plus
-`member_is_officer` for non-command contexts like button callbacks).
-TODO: none open.
-Notes: cogs decorate commands with these rather than inspecting roles or
-querying `competitors` inline. Checks raise `utils.errors` types so the
-tree-level handler in `bot.py` renders one consistent message.
-"""
+"""Permission logic — the single home for access rules."""
 
 from __future__ import annotations
 
@@ -23,11 +15,7 @@ if TYPE_CHECKING:
 
 async def has_competitor_row(bot: "WCRLBot", discord_id: int) -> bool:
     """Whether `discord_id` has a `competitors` row — the enforced definition of 'registered'."""
-    row = await bot.db.fetch_one(
-        "SELECT 1 FROM competitors WHERE discord_id = ?",
-        (discord_id,),
-    )
-    return row is not None
+    return await bot.db.competitors.exists(discord_id)
 
 
 def is_registered():

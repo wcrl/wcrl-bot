@@ -1,9 +1,4 @@
-"""Shared pytest fixtures.
-
-Current state: fully implemented (single `db` fixture).
-TODO: none open.
-Notes: none.
-"""
+"""Shared pytest fixtures."""
 
 from __future__ import annotations
 
@@ -14,7 +9,7 @@ import pytest_asyncio
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from db.connection import Database  # noqa: E402
+from wcrl_db import Database  # noqa: E402
 
 
 @pytest_asyncio.fixture

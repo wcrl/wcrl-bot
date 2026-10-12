@@ -1,23 +1,4 @@
-"""Ops helper: a snapshot of registration and team stats from the database.
-
-Purpose: one report for officers — how many competitors are registered,
-their year/major breakdown, and team sizes — without needing to touch the
-bot process or write any SQL by hand.
-
-Current state: fully implemented.
-TODO: none open.
-Notes: read-only connection details live in `scripts/_common.py`. Year and
-major breakdowns are a plain `GROUP BY` over what's actually stored, not a
-zero-filled list of `cogs.registration`'s current dropdown options — that
-would make an offline report depend on the bot's UI module, and would
-silently misreport if a competitor's stored value ever falls outside
-whatever the current option list happens to be (e.g. after an option is
-renamed) instead of surfacing it. Team counts use `COUNT(DISTINCT
-discord_id)` rather than leaning on the one-team-per-competitor unique
-index, so this stays correct if that constraint is ever relaxed (see
-CLAUDE.md > Teams). Never prints `school_email` — same policy as the rest
-of the codebase.
-"""
+"""Ops helper: a snapshot of registration and team stats from the database."""
 
 from __future__ import annotations
 
@@ -36,6 +17,10 @@ def collect_stats(conn: sqlite3.Connection) -> dict:
     total_competitors = conn.execute("SELECT COUNT(*) AS n FROM competitors").fetchone()["n"]
     with_profile = conn.execute("SELECT COUNT(*) AS n FROM competitor_profiles").fetchone()["n"]
 
+    # A plain GROUP BY over what's actually stored, not a zero-filled list of
+    # cogs.registration's current dropdown options — keeps this report from
+    # depending on the bot's UI module, and surfaces a stored value that's
+    # since fallen outside the option list instead of silently dropping it.
     year_counts = [
         (row["year"], row["n"])
         for row in conn.execute(
@@ -50,6 +35,8 @@ def collect_stats(conn: sqlite3.Connection) -> dict:
     ]
 
     total_teams = conn.execute("SELECT COUNT(*) AS n FROM teams").fetchone()["n"]
+    # COUNT(DISTINCT discord_id), not a lean on the one-team-per-competitor
+    # unique index, so this stays correct if that constraint is ever relaxed.
     competitors_on_a_team = conn.execute(
         "SELECT COUNT(DISTINCT discord_id) AS n FROM team_members"
     ).fetchone()["n"]
